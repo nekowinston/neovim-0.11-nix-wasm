@@ -67,22 +67,24 @@
                   '';
                 });
 
-                wasmtime-29_0_1 = final.stdenv.mkDerivation {
-                  inherit (pinnedWasmtime)
-                    pname
-                    version
-                    src
-                    cargoDeps
-                    ;
+                wasmtime-29_0_1 = pinnedWasmtime.overrideAttrs {
+                  postInstall =
+                    ''
+                      # move libs from out to dev
+                      install -d -m 0755 $dev/lib
+                      install -m 0644 ''${!outputLib}/lib/* $dev/lib
+                      rm -r ''${!outputLib}/lib
 
-                  nativeBuildInputs = [
-                    final.cargo
-                    final.rustc
-                    final.cmake
-                    final.rustPlatform.cargoSetupHook
-                  ];
-
-                  cmakeDir = "../crates/c-api";
+                      install -d -m0755 $dev/include/wasmtime
+                      # https://github.com/rust-lang/cargo/issues/9661
+                      install -m0644 target/${final.stdenv.targetPlatform.rust.cargoShortTarget}/release/build/wasmtime-c-api-impl-*/out/include/*.h $dev/include
+                      install -m0644 target/${final.stdenv.targetPlatform.rust.cargoShortTarget}/release/build/wasmtime-c-api-impl-*/out/include/wasmtime/*.h $dev/include/wasmtime
+                    ''
+                    + final.lib.optionalString final.stdenv.hostPlatform.isDarwin ''
+                      install_name_tool -id \
+                        $dev/lib/libwasmtime.dylib \
+                        $dev/lib/libwasmtime.dylib
+                    '';
                 };
               })
             ];
