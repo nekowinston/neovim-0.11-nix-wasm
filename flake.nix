@@ -42,61 +42,30 @@
                       tree-sitter = final.tree-sitter-with-wasm;
                     };
 
-                tree-sitter-with-wasm = final.stdenv.mkDerivation {
-                  inherit (prev.tree-sitter)
-                    pname
-                    version
-                    src
-                    cargoDeps
-                    ;
-
-                  buildInputs = [
-                    final.wasmtime-29_0_1
-                  ];
-                  nativeBuildInputs = [
-                    final.cmake
-                    final.cargo
-                    final.rustPlatform.cargoSetupHook
-                    final.rustPlatform.cargoBuildHook
-                    final.which
-                  ];
+                tree-sitter-with-wasm = prev.tree-sitter.overrideAttrs (prevAttrs: {
+                  buildInputs = (prevAttrs.buildInputs or [ ]) ++ [ final.wasmtime-29_0_1 ];
+                  nativeBuildInputs = (prevAttrs.nativeBuildInputs or [ ]) ++ [ final.cmake ];
 
                   cmakeDir = "../lib";
-                  cmakeFlags = [ (final.lib.cmakeBool "TREE_SITTER_FEATURE_WASM" true) ];
-
-                  cargoBuildType = "release";
+                  cmakeFlags = [
+                    (final.lib.cmakeBool "TREE_SITTER_FEATURE_WASM" true)
+                    "-DCMAKE_INSTALL_INCLUDEDIR=include"
+                    "-DCMAKE_INSTALL_LIBDIR=lib"
+                  ];
                   cargoBuildFeatures = [ "wasm" ];
 
-                  postInstall = "";
-                  passthru = {
-                    inherit (prev.tree-sitter.passthru)
-                      grammars
-                      buildGrammar
-                      builtGrammars
-                      withPlugins
-                      allGrammars
-                      ;
-                  };
+                  configurePhase = "cmakeConfigurePhase && cd ..";
+                  postBuild = "cmake --build $cmakeBuildDir";
 
-                  patches = (prev.tree-sitter.patches or [ ]) ++ [
-                    (final.writeText "fuckoff.patch" ''
-                      diff --git a/lib/tree-sitter.pc.in b/lib/tree-sitter.pc.in
-                      index 60fe5c4a..1d099ec5 100644
-                      --- a/lib/tree-sitter.pc.in
-                      +++ b/lib/tree-sitter.pc.in
-                      @@ -1,6 +1,5 @@
-                      -prefix=@CMAKE_INSTALL_PREFIX@
-                      -libdir=''${prefix}/@CMAKE_INSTALL_LIBDIR@
-                      -includedir=''${prefix}/@CMAKE_INSTALL_INCLUDEDIR@
-                      +libdir=@CMAKE_INSTALL_FULL_LIBDIR@
-                      +includedir=@CMAKE_INSTALL_FULL_INCLUDEDIR@
-
-                       Name: tree-sitter
-                       Description: @PROJECT_DESCRIPTION@
-                    '')
-                  ];
-
-                };
+                  postInstall = ''
+                    cmake --install $cmakeBuildDir
+                    mv $out/share/pkgconfig $out/lib/pkgconfig
+                    installShellCompletion --cmd tree-sitter \
+                      --bash <("$out/bin/tree-sitter" complete --shell bash) \
+                      --zsh <("$out/bin/tree-sitter" complete --shell zsh) \
+                      --fish <("$out/bin/tree-sitter" complete --shell fish)
+                  '';
+                });
 
                 wasmtime-29_0_1 = final.stdenv.mkDerivation {
                   inherit (pinnedWasmtime)
@@ -137,8 +106,10 @@
             inherit (pkgs)
               neovim
               neovim-unwrapped
+              tree-sitter
               tree-sitter-with-wasm
               wasmtime-29_0_1
+              wasmtime
               ;
           };
         };
